@@ -1,0 +1,44 @@
+group 'com.ekkongames.jdacbl'
+version '1.0-SNAPSHOT'
+
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.github.jengelman.gradle.plugins:shadow:2.0.2'
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'com.github.johnrengelman.shadow'
+
+sourceCompatibility = 1.8
+
+repositories {
+    jcenter()
+}
+
+jar {
+    manifest {
+        //attributes 'Class-Path': '/libs/a.jar'
+        attributes 'Main-Class': 'com.ekkongames.jdacbl.bot.Main'
+    }
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+
+    // Discord library
+    compile 'net.dv8tion:JDA:3.5.0_331'
+
+    compile 'com.sedmelluq:lavaplayer:1.2.62'
+
+    // logging
+    compile group: 'org.apache.logging.log4j', name: 'log4j-api', version: '2.10.0'
+    compile group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.10.0'
+    compile group: 'org.apache.logging.log4j', name: 'log4j-slf4j-impl', version: '2.10.0'
+
+    // required for the Discord library
+    compile group: 'org.apache.commons', name: 'commons-collections4', version: '4.1'
+}
