@@ -43,9 +43,9 @@ public class BotMenu extends ComponentProvider {
     };
 
 
-    private JMenu menu;
+    private final JMenu menu;
 
-    private EnumMap<HostWindow.EventId, BasicMenuItem> menuItems;
+    private final EnumMap<HostWindow.EventId, BasicMenuItem> menuItems;
 
     public BotMenu() {
         menu = new JMenu("Bot");
@@ -64,7 +64,18 @@ public class BotMenu extends ComponentProvider {
     }
 
     public void addEventListener(HostWindow.EventId eventId, Runnable listener) {
-        menuItems.get(eventId).addActionListener((ActionEvent) -> listener.run());
+        menuItems.get(eventId).addActionListener((ActionEvent) -> {
+            onIntermediateState();
+            listener.run();
+        });
+    }
+
+    public void onIntermediateState() {
+        menuItems.get(HostWindow.EventId.LOGIN).setEnabled(false);
+        menuItems.get(HostWindow.EventId.SERVER_ADD).setEnabled(false);
+        menuItems.get(HostWindow.EventId.RELOAD).setEnabled(false);
+        menuItems.get(HostWindow.EventId.LOGOUT).setEnabled(false);
+        // quit item is always enabled
     }
 
     public void onLogin() {

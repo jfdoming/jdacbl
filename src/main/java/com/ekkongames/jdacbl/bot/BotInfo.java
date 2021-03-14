@@ -10,16 +10,11 @@ import java.util.prefs.Preferences;
  */
 public class BotInfo {
 
-    // persistent preferences
-    private static final Preferences preferences = Preferences.userNodeForPackage(Bot.class);
-
     private final String authToken;
 
-    private String commandPrefix;
     private String game;
-    private CommandGroup commandGroup;
+    private CommandGroup[] commandGroups;
 
-    private Lottery[] lotteries;
     private volatile boolean loaded;
 
     private BotInfo(String authToken) {
@@ -28,18 +23,27 @@ public class BotInfo {
     }
 
     void load(Bot bot) {
-        commandGroup.addTo(bot);
+        for (CommandGroup commandGroup : commandGroups) {
+            commandGroup.addTo(bot);
+        }
         loaded = true;
     }
 
-    /**
-     * @return whether swear words will be allowed or blocked
-     */
-    public boolean isAllowSwears() {
-        assertLoaded();
+    void onLogin() {
+        for (CommandGroup commandGroup : commandGroups) {
+            commandGroup.onLogin();
+        }
+    }
 
-        synchronized (preferences) {
-            return preferences.getBoolean("allowSwears", true);
+    void onLogout() {
+        for (CommandGroup commandGroup : commandGroups) {
+            commandGroup.onLogout();
+        }
+    }
+
+    void free() {
+        for (CommandGroup commandGroup : commandGroups) {
+            commandGroup.free();
         }
     }
 
@@ -49,43 +53,8 @@ public class BotInfo {
         }
     }
 
-    public void setAllowSwears(boolean allowSwears) {
-        assertLoaded();
-
-        synchronized (preferences) {
-            preferences.putBoolean("allowSwears", allowSwears);
-        }
-    }
-
-    /**
-     * @return whether swear words will be filtered using regexes
-     */
-    public boolean isSmartFiltering() {
-        assertLoaded();
-
-        synchronized (preferences) {
-            return preferences.getBoolean("allowSwears", true);
-        }
-    }
-
-    public void setSmartFiltering(boolean smartFiltering) {
-        assertLoaded();
-
-        synchronized (preferences) {
-            preferences.putBoolean("allowSwears", smartFiltering);
-        }
-    }
-
-    public String getCommandPrefix() {
-        return commandPrefix;
-    }
-
-    public CommandGroup getParentCommandGroup() {
-        return commandGroup;
-    }
-
-    public Lottery[] getLotteries() {
-        return lotteries;
+    public CommandGroup[] getCommandGroups() {
+        return commandGroups;
     }
 
     String getAuthToken() {
@@ -98,30 +67,12 @@ public class BotInfo {
 
     public static final class Builder {
 
-        private String commandPrefix;
         private String game;
-        private CommandGroup commandGroup;
-        private ArrayList<Lottery> lotteries;
+        private final ArrayList<CommandGroup> commandGroups;
 
         public Builder() {
-            commandPrefix = "b!";
             game = "";
-            lotteries = new ArrayList<>();
-        }
-
-        /**
-         * Sets a string that will prefix commands.
-         *
-         * @param commandPrefix the string to use, not empty
-         * @return the builder for method call chaining
-         */
-        public BotInfo.Builder setCommandPrefix(String commandPrefix) {
-            if (commandPrefix.isEmpty()) {
-                return this;
-            }
-
-            this.commandPrefix = commandPrefix;
-            return this;
+            commandGroups = new ArrayList<>();
         }
 
         /**
@@ -141,19 +92,8 @@ public class BotInfo {
          * @param commandGroup the commands
          * @return the builder for method call chaining
          */
-        public BotInfo.Builder setCommandGroup(CommandGroup commandGroup) {
-            this.commandGroup = commandGroup;
-            return this;
-        }
-
-        /**
-         * Adds a lottery to the bot, that will be drawn every time a message is sent.
-         *
-         * @param lottery the lottery to add
-         * @return the builder for method call chaining
-         */
-        public BotInfo.Builder addLottery(Lottery lottery) {
-            lotteries.add(lottery);
+        public BotInfo.Builder addCommandGroup(CommandGroup commandGroup) {
+            this.commandGroups.add(commandGroup);
             return this;
         }
 
@@ -165,17 +105,14 @@ public class BotInfo {
          */
         public BotInfo build(String authToken) {
             BotInfo botInfo = new BotInfo(authToken);
-            botInfo.commandPrefix = commandPrefix;
             botInfo.game = game;
-            botInfo.lotteries = lotteries.toArray(new Lottery[0]);
 
             // ensure a command group exists
-            if (commandGroup == null) {
-                commandGroup = new CommandGroup.Builder()
-                        .build();
+            if (commandGroups.size() == 0) {
+                commandGroups.add(new CommandGroup.Builder().build());
             }
 
-            botInfo.commandGroup = commandGroup;
+            botInfo.commandGroups = commandGroups.toArray(new CommandGroup[0]);
             return botInfo;
         }
 

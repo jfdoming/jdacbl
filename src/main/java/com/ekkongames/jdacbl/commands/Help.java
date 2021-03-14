@@ -11,7 +11,7 @@ public class Help extends Command {
 
     public Help() {
         super(new CommandInfo.Builder()
-                .names("help", "?", "")
+                .names("help", "?")
                 .summary("provide information about commands you can use with this bot")
                 .usage("[command]")
                 .build());
@@ -35,7 +35,7 @@ public class Help extends Command {
                         )
                 );
             }
-            output.append(commandGroup.getBot().getInfo().getCommandPrefix());
+            output.append(commandGroup.getPrefix());
             output.append(commandInfo.getNames()[0]);
             output.append(": ");
             output.append(commandInfo.getHelpText());

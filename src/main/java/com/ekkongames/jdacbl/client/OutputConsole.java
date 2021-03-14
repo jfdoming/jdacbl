@@ -10,8 +10,8 @@ import java.awt.Cursor;
  * @author Julian Dominguez-Schatz <jfdoming at ekkon.dx.am>
  */
 public class OutputConsole extends ComponentProvider {
-    private JScrollPane scrollPane;
-    private JTextArea console;
+    private final JScrollPane scrollPane;
+    private final JTextArea console;
 
     public OutputConsole() {
         console = new JTextArea();
@@ -30,5 +30,9 @@ public class OutputConsole extends ComponentProvider {
     @Override
     Component getComponent() {
         return scrollPane;
+    }
+
+    void clear() {
+        console.setText("");
     }
 }

@@ -9,7 +9,7 @@ import java.awt.event.WindowEvent;
  */
 public class WindowCloseListener extends WindowAdapter {
 
-    private Bot bot;
+    private final Bot bot;
 
     public WindowCloseListener(Bot bot) {
         this.bot = bot;

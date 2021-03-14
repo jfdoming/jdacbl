@@ -5,19 +5,20 @@ import com.ekkongames.jdacbl.utils.GuiUtils;
 import com.ekkongames.jdacbl.utils.MultiOutputStream;
 import com.ekkongames.jdacbl.utils.TextAreaOutputStream;
 
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.JMenuBar;
-import javax.swing.JScrollPane;
-import javax.swing.JTextArea;
+import javax.swing.*;
 import java.awt.BorderLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.WindowListener;
 import java.io.PrintStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * @author Julian Dominguez-Schatz <jfdoming at ekkon.dx.am>
  */
-public class HostWindow {
+public class HostWindow implements ActionListener {
 
     public enum EventId {
         LOGIN, SERVER_ADD, RELOAD, LOGOUT, QUIT
@@ -30,6 +31,9 @@ public class HostWindow {
     private JMenuBar menuBar;
     private BotMenu botMenu;
     private OutputConsole outputConsole;
+    JTextField commandArea;
+
+    private List<Consumer<String>> inputListeners;
 
     public HostWindow() {
         configureEnvironment();
@@ -62,14 +66,40 @@ public class HostWindow {
 //        PrintStream errStream = new PrintStream(new MultiOutputStream(textAreaOutputStream, System.err));
 //        System.setErr(errStream);
 
-        // prepare the status label
+        // prepare the bottom panel
         // I initialize it with a whitespace String since this allows it to be sized properly for the pack() call.
+        JPanel bottomPanel = new JPanel(new BorderLayout());
         statusLabel = new JLabel(" ");
-        window.add(statusLabel, BorderLayout.SOUTH);
+        bottomPanel.add(statusLabel, BorderLayout.SOUTH);
+
+        commandArea = new JTextField();
+        commandArea.setEnabled(false);
+        inputListeners = new ArrayList<>();
+        commandArea.addActionListener(this);
+        bottomPanel.add(commandArea, BorderLayout.CENTER);
+
+        window.add(bottomPanel, BorderLayout.SOUTH);
     }
 
     public void addWindowListener(WindowListener listener) {
         window.addWindowListener(listener);
+    }
+
+    public void addInputListener(Consumer<String> listener) {
+        inputListeners.add(listener);
+    }
+
+    public void removeInputListener(Consumer<String> listener) {
+        inputListeners.remove(listener);
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        String text = commandArea.getText();
+        commandArea.setText("");
+        for (Consumer<String> listener : inputListeners) {
+            listener.accept(text);
+        }
     }
 
     public BotMenu getBotMenu() {
@@ -103,12 +133,19 @@ public class HostWindow {
         switch (state) {
             case IDLE:
                 botMenu.onLogout();
+                commandArea.setEnabled(false);
+                break;
+            case CONNECTING:
+                botMenu.onIntermediateState();
+                commandArea.setEnabled(false);
                 break;
             case CONNECTED:
                 botMenu.onLogin();
+                commandArea.setEnabled(true);
                 break;
             case LOAD_FAILED:
                 botMenu.onError();
+                commandArea.setEnabled(false);
                 break;
             default:
                 // no change in UI
@@ -120,5 +157,9 @@ public class HostWindow {
         if (botMenu.isValidEventIdForMenu(eventId)) {
             botMenu.addEventListener(eventId, listener);
         }
+    }
+
+    public void clearOutput() {
+        outputConsole.clear();
     }
 }

@@ -1,17 +1,13 @@
 package com.ekkongames.jdacbl.utils;
 
+import com.ekkongames.jdacbl.bot.Bot;
 import com.ekkongames.jdacbl.commands.CommandInput;
-import net.dv8tion.jda.core.entities.Guild;
-import net.dv8tion.jda.core.entities.Member;
-import net.dv8tion.jda.core.entities.MessageChannel;
-import net.dv8tion.jda.core.entities.Role;
-import net.dv8tion.jda.core.entities.User;
-import net.dv8tion.jda.core.entities.VoiceChannel;
-import net.dv8tion.jda.core.events.message.MessageReceivedEvent;
-import net.dv8tion.jda.core.managers.GuildController;
-import net.dv8tion.jda.core.requests.RestAction;
+import net.dv8tion.jda.api.entities.*;
+import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
+import net.dv8tion.jda.api.requests.RestAction;
 
 import java.awt.Color;
+import java.util.Objects;
 import java.util.function.BiFunction;
 
 /**
@@ -22,8 +18,8 @@ public final class BotUtils {
     private static MessageReceivedEvent event;
     private static boolean usingStaticGuild;
     private static Guild guild;
-    private static GuildController guildController;
     private static Member self;
+    private static User author;
     private static String authorMention;
     private static MessageChannel channel;
 
@@ -33,17 +29,28 @@ public final class BotUtils {
         if (!usingStaticGuild) {
             guild = event.getGuild();
         }
-        guildController = guild.getController();
         self = guild.getSelfMember();
         channel = event.getChannel();
-        authorMention = getMemberName(event.getAuthor());
+        author = event.getAuthor();
+        authorMention = getMemberName(author);
+    }
+
+    public static void begin(Guild guild, User author, MessageChannel channel) {
+        event = null;
+        if (!usingStaticGuild) {
+            BotUtils.guild = guild;
+        }
+        self = guild.getSelfMember();
+        BotUtils.channel = channel;
+        BotUtils.author = author;
+        authorMention = null;
     }
 
     public static void end() {
         authorMention = null;
+        author = null;
         channel = null;
         self = null;
-        guildController = null;
         if (!usingStaticGuild) {
             guild = null;
         }
@@ -61,11 +68,8 @@ public final class BotUtils {
      * Toggles whether to update the guild upon receiving an event.
      */
     public static void toggleStaticGuild() {
-        if (!isUsingStaticGuild() || !guild.getId().equals(event.getGuild().getId())) {
-            usingStaticGuild = true;
-        } else {
-            usingStaticGuild = false;
-        }
+        usingStaticGuild = !isUsingStaticGuild()
+                || (event != null && !guild.getId().equals(event.getGuild().getId()));
     }
 
     /**
@@ -90,6 +94,13 @@ public final class BotUtils {
     }
 
     /**
+     * @return the user who sent the current message
+     */
+    public static User getAuthor() {
+        return author;
+    }
+
+    /**
      * @return a String representing a mention of the user who sent the current message
      */
     public static String getAuthorMention() {
@@ -104,7 +115,7 @@ public final class BotUtils {
     }
 
     /**
-     * @param target the user who sent the command
+     * @param target     the user who sent the command
      * @param roleString a String representing the role to check for
      * @return whether the user has permissions higher or equal to the provided role
      */
@@ -121,7 +132,7 @@ public final class BotUtils {
     }
 
     private static String getMemberName(User target) {
-        return guild.getMember(target).getAsMention();
+        return Objects.requireNonNull(guild.retrieveMember(target).complete()).getAsMention();
     }
 
     private static boolean canInteractWith(Member target) {
@@ -182,7 +193,7 @@ public final class BotUtils {
         return modifyTargetRoles(
                 targetUser,
                 roleString,
-                (target, role) -> guildController.addRolesToMember(target, role)
+                (target, role) -> guild.addRoleToMember(target, role)
         );
     }
 
@@ -197,14 +208,14 @@ public final class BotUtils {
         return modifyTargetRoles(
                 targetUser,
                 roleString,
-                (target, role) -> guildController.removeRolesFromMember(target, role)
+                (target, role) -> guild.removeRoleFromMember(target, role)
         );
     }
 
     /**
      * Modify the target role to change its @mentionable status.
      *
-     * @param roleString the role to modify
+     * @param roleString  the role to modify
      * @param mentionable whether the specified role should be @mentionable
      * @return whether the role was successfully modified
      */
@@ -227,7 +238,7 @@ public final class BotUtils {
      * Modify the target role to change its colour.
      *
      * @param roleString the role to modify
-     * @param colour the new colour of the role
+     * @param colour     the new colour of the role
      * @return whether the role was successfully modified
      */
     public static boolean setRoleColour(String roleString, Color colour) {
@@ -249,7 +260,7 @@ public final class BotUtils {
     /**
      * Modify the target role to change its name.
      *
-     * @param roleString the role to modify
+     * @param roleString    the role to modify
      * @param newRoleString the new name of the role
      * @return whether the role was successfully modified
      */
@@ -274,7 +285,7 @@ public final class BotUtils {
      * @return whether the role was successfully created
      */
     public static boolean makeRole(String roleString) {
-        guild.getController().createRole().setName(roleString)
+        guild.createRole().setName(roleString)
                 .queue(
                         null,
                         (t) -> sendMessage("Failed to create the role " + roleString)
@@ -285,7 +296,7 @@ public final class BotUtils {
     /**
      * Moves the target user to the specified voice channel.
      *
-     * @param targetUser the user to move
+     * @param targetUser  the user to move
      * @param channelName the voice channel to move the user to
      * @return whether the user was sucessfully moved
      */
@@ -299,7 +310,7 @@ public final class BotUtils {
 
         // move the target to the new voice channel
         try {
-            guildController.moveVoiceMember(guild.getMember(targetUser), vChannel).queue();
+            guild.moveVoiceMember(guild.getMember(targetUser), vChannel).queue();
         } catch (IllegalStateException e) {
             sendMessage("You cannot move a user who isn't in a voice channel");
             return false;
@@ -311,7 +322,7 @@ public final class BotUtils {
      * Sets the nickname for the target user in the current server.
      *
      * @param targetUser the user to change the nickname of
-     * @param nickname the nickname to use
+     * @param nickname   the nickname to use
      * @return whether the user's nickname was successfully changed
      */
     public static boolean setUserNickname(User targetUser, String nickname) {
@@ -326,7 +337,7 @@ public final class BotUtils {
             return false;
         }
 
-        guildController.setNickname(targetMember, nickname)
+        targetMember.modifyNickname(nickname)
                 .queue(
                         null,
                         (t) -> sendMessage("Failed to modify the nickname of the user " + targetUser.getAsMention()));
@@ -340,7 +351,13 @@ public final class BotUtils {
      * @param message the message to send
      */
     public static void sendMessage(String message) {
-        sendPlainMessage(message + ", " + authorMention + "!");
+        if (event == null) {
+            Log.i("Bot", message + "!");
+        } else if (authorMention == null) {
+            sendPlainMessage(message + "!");
+        } else {
+            sendPlainMessage(message + ", " + authorMention + "!");
+        }
     }
 
     /**
@@ -349,13 +366,17 @@ public final class BotUtils {
      * @param message the message to send
      */
     public static void sendPlainMessage(String message) {
-        channel.sendMessage(message).queue();
+        if (channel != null) {
+            channel.sendMessage(message).queue(result -> {});
+        } else {
+            Log.i("Bot", message);
+        }
     }
 
     /**
      * Sends a direct message to the target user.
      *
-     * @param target the user to DM
+     * @param target  the user to DM
      * @param message the message to send
      */
     public static void sendPrivateMessage(User target, String message) {

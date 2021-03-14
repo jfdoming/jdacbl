@@ -1,17 +1,19 @@
 package com.ekkongames.jdacbl.bot;
 
 import com.ekkongames.jdacbl.bot.jar.EntryPoint;
-import com.ekkongames.jdacbl.bot.jar.JarPathResolver;
+import com.ekkongames.jdacbl.bot.jar.DynamicJar;
 import com.ekkongames.jdacbl.client.HostWindow;
 import com.ekkongames.jdacbl.utils.Log;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers;
-import net.dv8tion.jda.core.AccountType;
-import net.dv8tion.jda.core.JDA;
-import net.dv8tion.jda.core.JDABuilder;
-import net.dv8tion.jda.core.entities.Game;
-import net.dv8tion.jda.core.events.ReadyEvent;
+import net.dv8tion.jda.api.JDA;
+import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.entities.Activity;
+import net.dv8tion.jda.api.events.ReadyEvent;
+import net.dv8tion.jda.api.requests.GatewayIntent;
+import net.dv8tion.jda.api.utils.MemberCachePolicy;
+import net.dv8tion.jda.api.utils.cache.CacheFlag;
 
 import javax.security.auth.login.LoginException;
 import javax.swing.SwingUtilities;
@@ -19,15 +21,12 @@ import java.awt.Desktop;
 import java.awt.EventQueue;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.jar.JarFile;
-import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 
 /**
@@ -43,11 +42,13 @@ public class Bot {
     private HostWindow window;
 
     private JDA jda;
-    private File jarFile;
+    private DynamicJar.Loader<BotInfo, EntryPoint> jarFile;
+    private DynamicJar<BotInfo, EntryPoint> jar = null;
 
     private AudioPlayerManager audioManager;
 
     private Map<String, GuildState> guildStates;
+    private BotListener botListener;
 
     public enum State {
         IDLE("Idle."),
@@ -122,11 +123,18 @@ public class Bot {
         window.addEventListener(HostWindow.EventId.RELOAD, this::loadInfo);
         window.addEventListener(HostWindow.EventId.LOGOUT, this::doBotLogout);
         window.addEventListener(HostWindow.EventId.QUIT, this::disposeGUI);
+        window.addInputListener(this::receiveUICommand);
         window.open();
     }
 
+    private void receiveUICommand(String message) {
+        if (botListener != null) {
+            botListener.accept(message);
+        }
+    }
+
     private void resolvePath(String[] args) {
-        jarFile = new JarPathResolver()
+        jarFile = new DynamicJar.Resolver<>(EntryPoint.class)
                 .checkArgs(args)
                 .checkConfig(new File("config.properties"))
                 .resolve();
@@ -137,7 +145,21 @@ public class Bot {
     }
 
     private void loadInfo() {
+        if (jar != null) {
+            try {
+                jar.unload();
+            } catch (IOException e) {
+                Log.e(TAG, e);
+            }
+            jar = null;
+        }
+
         asyncExecutor.execute(() -> {
+            State originalState;
+            synchronized (stateLock) {
+                originalState = state;
+            }
+
             setInfo(null);
 
             if (jarFile == null) {
@@ -146,38 +168,48 @@ public class Bot {
             }
 
             String errMsg = null;
+            Throwable errThrowable = null;
             try {
-                JarFile jar = new JarFile(jarFile);
-                Manifest jarManifest = jar.getManifest();
-                try (URLClassLoader loader = new URLClassLoader(new URL[]{jarFile.toURI().toURL()})) {
-                    Class<?> clazz = loader.loadClass(jarManifest.getMainAttributes().getValue("Entry-Point"));
-                    EntryPoint entryPoint = (EntryPoint) clazz.newInstance();
-                    setInfo(entryPoint.run());
-                    loader.close();
+                jar = jarFile.load();
 
-                    if (getInfo() == null) {
-                        errMsg = "BotInfo was null";
-                    }
-                } catch (ClassNotFoundException | NoClassDefFoundError e) {
-                    errMsg = "Failed to locate entry point!";
-                    e.printStackTrace();
-                } catch (IllegalAccessException e) {
-                    errMsg = "Failed to access entry point!";
-                } catch (InstantiationException e) {
-                    errMsg = "Failed to instantiate entry point!";
+                setInfo(jar.run());
+                if (getInfo() == null) {
+                    errMsg = "BotInfo was null";
                 }
-                jar.close();
             } catch (IOException e) {
                 errMsg = "Failed to open bot!";
-                System.out.println(jarFile.getAbsolutePath());
+                errThrowable = e;
+                Log.d(TAG, "Jar load failure path: " + jarFile.getAbsolutePath());
+            } catch (ClassNotFoundException | NoClassDefFoundError e) {
+                errMsg = "Failed to locate entry point!";
+                errThrowable = e;
+            } catch (IllegalAccessException e) {
+                errMsg = "Failed to access entry point!";
+                errThrowable = e;
+            } catch (InstantiationException e) {
+                errMsg = "Failed to instantiate entry point!";
+                errThrowable = e;
+            } catch (NoSuchMethodException | InvocationTargetException e) {
+                errMsg = "Failed to invoke entry point!";
+                errThrowable = e;
             }
 
             if (errMsg != null) {
                 EventQueue.invokeLater(() -> setState(State.LOAD_FAILED));
 
-                Log.e(TAG, State.LOAD_FAILED.getStatusText().concat(" Reason: ").concat(errMsg));
+                Log.e(TAG, State.LOAD_FAILED.getStatusText().concat(" Reason: ").concat(errMsg), errThrowable);
             } else {
                 Log.i(TAG, "Bot JAR successfully loaded.");
+
+                if (originalState == State.CONNECTED) {
+                    // Need to log back in.
+                    doBotLogin();
+                } else {
+                    synchronized (stateLock) {
+                        // Refresh the UI for the current state.
+                        window.onState(state);
+                    }
+                }
             }
         });
     }
@@ -204,14 +236,20 @@ public class Bot {
                 Log.i(TAG, "Logging in...");
 
                 String gameString = info.getGame();
-                Game game = gameString.isEmpty() ? null : Game.playing(gameString);
+                Activity game = gameString.isEmpty() ? null : Activity.playing(gameString);
 
-                jda = new JDABuilder(AccountType.BOT)
-                        .setToken(info.getAuthToken())
-                        .setGame(game)
-                        .addEventListener(new BotListener(this))
+                botListener = new BotListener(this);
+                jda = JDABuilder.createDefault(info.getAuthToken())
+                        .enableIntents(GatewayIntent.GUILD_MEMBERS)
+                        .enableIntents(GatewayIntent.GUILD_PRESENCES)
+                        .enableIntents(GatewayIntent.GUILD_VOICE_STATES)
+                        .enableCache(CacheFlag.ACTIVITY)
+                        .setMemberCachePolicy(MemberCachePolicy.ALL)
+                        .setActivity(game)
+                        .addEventListeners(botListener)
                         .setBulkDeleteSplittingEnabled(false)
-                        .buildBlocking();
+                        .build();
+                jda.awaitReady();
 
                 guildStates = jda.getGuilds().stream().map(guild -> new GuildState(audioManager, guild))
                         .collect(Collectors.toMap(
@@ -220,7 +258,7 @@ public class Bot {
                         ));
 
                 synchronized (infoLock) {
-                    info.getParentCommandGroup().onLogin();
+                    info.onLogin();
                 }
 
                 Log.i(TAG, "Successfully logged in!");
@@ -249,7 +287,7 @@ public class Bot {
             if (!isIdleState()) {
                 Log.i(TAG, "Logging out...");
                 synchronized (infoLock) {
-                    info.getParentCommandGroup().onLogout();
+                    info.onLogout();
                 }
             }
 
@@ -278,7 +316,7 @@ public class Bot {
 
         asyncExecutor.execute(() -> {
             try {
-                Desktop.getDesktop().browse(URI.create(jda.asBot().getInviteUrl()));
+                Desktop.getDesktop().browse(URI.create(jda.getInviteUrl()));
             } catch (IOException ex) {
                 System.err.println("Invalid URI!");
             }
@@ -304,11 +342,15 @@ public class Bot {
         });
     }
 
+    public void clearOutput() {
+        window.clearOutput();
+    }
+
     private void setState(State newState) {
         synchronized (stateLock) {
             state = newState;
         }
-        window.onState(state);
+        window.onState(newState);
     }
 
     private boolean isTerminalState() {
@@ -323,18 +365,12 @@ public class Bot {
         }
     }
 
-    private State getState() {
-        synchronized (stateLock) {
-            return state;
-        }
-    }
-
     private void setInfo(BotInfo info) {
         synchronized (infoLock) {
             BotInfo oldInfo = this.info;
 
             if (oldInfo != null) {
-                oldInfo.getParentCommandGroup().free();
+                oldInfo.free();
 
                 if (info == null || !oldInfo.getAuthToken().equals(info.getAuthToken())) {
                     doBotLogout();
@@ -352,5 +388,9 @@ public class Bot {
         synchronized (infoLock) {
             return info;
         }
+    }
+
+    public JDA getJDA() {
+        return jda;
     }
 }

@@ -2,7 +2,7 @@ package com.ekkongames.jdacbl.bot;
 
 import com.ekkongames.jdacbl.audio.GuildVoiceController;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
-import net.dv8tion.jda.core.entities.Guild;
+import net.dv8tion.jda.api.entities.Guild;
 
 import java.util.prefs.Preferences;
 
