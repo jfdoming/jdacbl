@@ -17,11 +17,11 @@ public class GuildState {
     private final String guildId;
     private final GuildVoiceController voiceController;
 
-    public GuildState(AudioPlayerManager audioPlayerManager, Guild guild) {
+    public GuildState(String youtubeToken, AudioPlayerManager audioPlayerManager, Guild guild) {
         this.guild = guild;
         this.guildId = guild.getId();
 
-        this.voiceController = new GuildVoiceController(audioPlayerManager, guild.getAudioManager());
+        this.voiceController = new GuildVoiceController(youtubeToken, audioPlayerManager, guild.getAudioManager());
     }
 
     public Guild getGuild() {

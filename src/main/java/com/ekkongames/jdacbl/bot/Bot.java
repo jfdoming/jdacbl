@@ -251,7 +251,7 @@ public class Bot {
                         .build();
                 jda.awaitReady();
 
-                guildStates = jda.getGuilds().stream().map(guild -> new GuildState(audioManager, guild))
+                guildStates = jda.getGuilds().stream().map(guild -> new GuildState(info.getYoutubeToken(), audioManager, guild))
                         .collect(Collectors.toMap(
                                 (GuildState guildState) -> guildState.getGuild().getId(),
                                 (guildState -> guildState)

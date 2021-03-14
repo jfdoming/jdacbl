@@ -11,6 +11,7 @@ import java.util.prefs.Preferences;
 public class BotInfo {
 
     private final String authToken;
+    private String youtubeToken;
 
     private String game;
     private CommandGroup[] commandGroups;
@@ -61,6 +62,10 @@ public class BotInfo {
         return authToken;
     }
 
+    public String getYoutubeToken() {
+        return youtubeToken;
+    }
+
     public String getGame() {
         return game;
     }
@@ -69,6 +74,7 @@ public class BotInfo {
 
         private String game;
         private final ArrayList<CommandGroup> commandGroups;
+        private String youtubeToken;
 
         public Builder() {
             game = "";
@@ -83,6 +89,17 @@ public class BotInfo {
          */
         public BotInfo.Builder setGame(String game) {
             this.game = game;
+            return this;
+        }
+
+        /**
+         * Sets the token that is used to search for music on YouTube.
+         *
+         * @param token the token to use
+         * @return the builder for method call chaining
+         */
+        public BotInfo.Builder setYoutubeToken(String token) {
+            this.youtubeToken = token;
             return this;
         }
 
@@ -106,6 +123,7 @@ public class BotInfo {
         public BotInfo build(String authToken) {
             BotInfo botInfo = new BotInfo(authToken);
             botInfo.game = game;
+            botInfo.youtubeToken = youtubeToken;
 
             // ensure a command group exists
             if (commandGroups.size() == 0) {
